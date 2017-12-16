@@ -2,114 +2,430 @@
 using System.Net;
 using System.Web.Http;
 using refactor_me.Models;
+using refactor_me.Factories;
+using System.Configuration;
+using System.Reflection;
+using System.Net.Http;
+using System.Threading.Tasks;
+using refactor_me.Interfaces;
 
 namespace refactor_me.Controllers
 {
     [RoutePrefix("products")]
     public class ProductsController : ApiController
     {
-        [Route]
-        [HttpGet]
-        public Products GetAll()
+        private IProductFactory _productFactory;
+
+        private IAuthorization _authorization;
+
+        /// <summary>
+        /// Initialize the Product Factory & Authorization class using reflection from Web.Config.
+        /// </summary>
+        public ProductsController()
         {
-            return new Products();
+            // Product factory
+            var productFactoryAppSetting = ConfigurationManager.AppSettings["IProductFactory"];
+            if (!string.IsNullOrEmpty(productFactoryAppSetting))
+            {                
+                Type type = Type.GetType(productFactoryAppSetting);
+                if (type == null)
+                    throw new Exception(productFactoryAppSetting + " does not implement IProductFactory");
+                else
+                    _productFactory = (IProductFactory)Activator.CreateInstance(type);
+            }
+            else
+                throw new Exception("AppSettings for IProductFactory not found in web.config");
+
+
+            // Authorization class
+            var authorizationAppSetting = ConfigurationManager.AppSettings["IAuthorization"];
+            if (!string.IsNullOrEmpty(authorizationAppSetting))
+            {
+                Type type = Type.GetType(authorizationAppSetting);
+                if (type == null)
+                    throw new Exception(authorizationAppSetting + " does not implement IAuthorization");
+                else
+                    _authorization = (IAuthorization)Activator.CreateInstance(type);
+            }
+            else
+                throw new Exception("AppSettings for IAuthorization not found in web.config");
+
         }
 
+        /// <summary>
+        /// GET /products
+        /// </summary>
+        /// <returns></returns>
         [Route]
         [HttpGet]
-        public Products SearchByName(string name)
+        public async Task<IHttpActionResult> GetAll()
         {
-            return new Products(name);
+            IHttpActionResult result = null;
+            
+            try
+            {
+                // Authorize
+                var authorized = await _authorization.Authorize("Basic","Product","GET");
+                if (!authorized)
+                    throw new Exception("Unauthorized user access.");
+
+                // Get Products
+                var products = await _productFactory.GetProducts();
+                if (products != null && products.Items != null
+                    && products.Items.Count > 0)
+                    result = Ok(products);
+
+                else
+                {
+                    var response = new HttpResponseMessage(HttpStatusCode.NoContent);
+                    result = ResponseMessage(response);
+                }
+            }   
+            catch(Exception ex)
+            {
+                result = InternalServerError(ex);
+            }
+
+            return result;        
         }
 
+        /// <summary>
+        /// GET /products?name={name}
+        /// </summary>
+        /// <param name="name"></param>
+        /// <returns></returns>
+        [Route]
+        [HttpGet]
+        public async Task<IHttpActionResult> SearchByName(string name)
+        {
+            IHttpActionResult result = null;
+
+            try
+            {
+                // Authorize
+                var authorized = await _authorization.Authorize("Basic", "Product", "GET");
+                if (!authorized)
+                    throw new Exception("Unauthorized user access.");
+
+
+                // Get products by name
+                var products = await _productFactory.GetProducts(name);
+                if (products != null && products.Items != null
+                    && products.Items.Count > 0)
+                    result = Ok(products);
+
+                else
+                {
+                    var response = new HttpResponseMessage(HttpStatusCode.NoContent);
+                    result = ResponseMessage(response);
+                }
+            }
+            catch (Exception ex)
+            {
+                result = InternalServerError(ex);
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// GET /products/{id}
+        /// </summary>
+        /// <param name="id"></param>
+        /// <returns></returns>
         [Route("{id}")]
         [HttpGet]
-        public Product GetProduct(Guid id)
+        public async Task<IHttpActionResult> GetProduct(Guid id)
         {
-            var product = new Product(id);
-            if (product.IsNew)
-                throw new HttpResponseException(HttpStatusCode.NotFound);
+            IHttpActionResult result = null;
 
-            return product;
+            try
+            {
+                // Authorize
+                var authorized = await _authorization.Authorize("Basic", "Product", "GET");
+                if (!authorized)
+                    throw new Exception("Unauthorized user access.");
+
+                // Get products by Id
+                var product = await _productFactory.GetProduct(id);
+                if (product != null)
+                    result = Ok(product);
+                else
+                    result = NotFound();
+                
+            }
+            catch (Exception ex)
+            {
+                result = InternalServerError(ex);
+            }
+
+            return result;            
+
         }
 
+        /// <summary>
+        /// POST /products
+        /// </summary>
+        /// <param name="product"></param>
+        /// <returns></returns>
         [Route]
         [HttpPost]
-        public void Create(Product product)
+        public async Task<IHttpActionResult> Create(Product product)
         {
-            product.Save();
+            IHttpActionResult result = null;
+
+            try
+            {
+                // Authorize
+                var authorized = await _authorization.Authorize("Basic", "Product", "POST");
+                if (!authorized)
+                    throw new Exception("Unauthorized user access.");
+
+                // Create product
+                await _productFactory.CreateProduct(product);
+                var response = new HttpResponseMessage(HttpStatusCode.NoContent);
+                result = ResponseMessage(response);
+            }           
+            catch (Exception ex)
+            {
+                result = InternalServerError(ex);
+            }
+
+            return result;
         }
 
+        /// <summary>
+        /// PUT /products/{id}
+        /// </summary>
+        /// <param name="id"></param>
+        /// <param name="product"></param>
+        /// <returns></returns>
         [Route("{id}")]
         [HttpPut]
-        public void Update(Guid id, Product product)
+        public async Task<IHttpActionResult> Update(Guid id, Product product)
         {
-            var orig = new Product(id)
-            {
-                Name = product.Name,
-                Description = product.Description,
-                Price = product.Price,
-                DeliveryPrice = product.DeliveryPrice
-            };
+            IHttpActionResult result = null;
 
-            if (!orig.IsNew)
-                orig.Save();
+            try
+            {
+                // Authorize
+                var authorized = await _authorization.Authorize("Basic", "Product", "PUT");
+                if (!authorized)
+                    throw new Exception("Unauthorized user access.");
+
+                // Update product
+                await _productFactory.UpdateProduct(product, id);
+                var response = new HttpResponseMessage(HttpStatusCode.NoContent);
+                result = ResponseMessage(response);
+            }
+            catch (Exception ex)
+            {
+                result = InternalServerError(ex);
+            }
+
+            return result;
         }
 
+        /// <summary>
+        /// DELETE /products/{id}
+        /// </summary>
+        /// <param name="id"></param>
+        /// <returns></returns>
         [Route("{id}")]
         [HttpDelete]
-        public void Delete(Guid id)
+        public async Task<IHttpActionResult> Delete(Guid id)
         {
-            var product = new Product(id);
-            product.Delete();
+            IHttpActionResult result = null;
+
+            try
+            {
+                // Authorize
+                var authorized = await _authorization.Authorize("Basic", "Product", "DELETE");
+                if (!authorized)
+                    throw new Exception("Unauthorized user access.");
+
+                // Delete product
+                await _productFactory.DeleteProduct(id);
+                var response = new HttpResponseMessage(HttpStatusCode.NoContent);
+                result = ResponseMessage(response);
+            }
+            catch (Exception ex)
+            {
+                result = InternalServerError(ex);
+            }
+
+            return result;
         }
 
+        /// <summary>
+        /// GET /products/{id}/options
+        /// </summary>
+        /// <param name="productId"></param>
+        /// <returns></returns>
         [Route("{productId}/options")]
         [HttpGet]
-        public ProductOptions GetOptions(Guid productId)
+        public async Task<IHttpActionResult> GetOptions(Guid productId)
         {
-            return new ProductOptions(productId);
+            IHttpActionResult result = null;
+
+            try
+            {
+                // Authorize
+                var authorized = await _authorization.Authorize("Basic", "ProductOption", "GET");
+                if (!authorized)
+                    throw new Exception("Unauthorized user access.");
+
+                // Get product options
+                var productOptions = await _productFactory.GetProductOptions(productId);
+                if (productOptions != null && productOptions.Items != null
+                    && productOptions.Items.Count > 0)
+                    result = Ok(productOptions);
+
+                else
+                {
+                    var response = new HttpResponseMessage(HttpStatusCode.NoContent);
+                    result = ResponseMessage(response);
+                }
+            }
+            catch (Exception ex)
+            {
+                result = InternalServerError(ex);
+            }
+
+            return result;
         }
 
+        /// <summary>
+        /// GET /products/{id}/options/{optionId}
+        /// </summary>
+        /// <param name="productId"></param>
+        /// <param name="id"></param>
+        /// <returns></returns>
         [Route("{productId}/options/{id}")]
         [HttpGet]
-        public ProductOption GetOption(Guid productId, Guid id)
+        public async Task<IHttpActionResult> GetOption(Guid productId, Guid id)
         {
-            var option = new ProductOption(id);
-            if (option.IsNew)
-                throw new HttpResponseException(HttpStatusCode.NotFound);
+            IHttpActionResult result = null;
 
-            return option;
+            try
+            {
+                // Authorize
+                var authorized = await _authorization.Authorize("Basic", "ProductOption", "GET");
+                if (!authorized)
+                    throw new Exception("Unauthorized user access.");
+
+                // Get product option
+                var product = await _productFactory.GetProductOption(productId,id);
+                if (product != null)
+                    result = Ok(product);
+                else
+                    result = NotFound();
+
+            }
+            catch (Exception ex)
+            {
+                result = InternalServerError(ex);
+            }
+
+            return result;
         }
 
+        /// <summary>
+        /// POST /products/{id}/options
+        /// </summary>
+        /// <param name="productId"></param>
+        /// <param name="option"></param>
+        /// <returns></returns>
         [Route("{productId}/options")]
         [HttpPost]
-        public void CreateOption(Guid productId, ProductOption option)
+        public async Task<IHttpActionResult> CreateOption(Guid productId, ProductOption option)
         {
-            option.ProductId = productId;
-            option.Save();
+            IHttpActionResult result = null;
+
+            try
+            {
+                // Authorize
+                var authorized = await _authorization.Authorize("Basic", "ProductOption", "POST");
+                if (!authorized)
+                    throw new Exception("Unauthorized user access.");
+
+                // Create product option
+                await _productFactory.AddProductOption(productId,option);
+                var response = new HttpResponseMessage(HttpStatusCode.NoContent);
+                result = ResponseMessage(response);
+            }
+            catch (Exception ex)
+            {
+                result = InternalServerError(ex);
+            }
+
+            return result;
         }
 
+        /// <summary>
+        /// PUT /products/{id}/options/{optionId}
+        /// </summary>
+        /// <param name="productId"></param>
+        /// <param name="id"></param>
+        /// <param name="option"></param>
+        /// <returns></returns>
         [Route("{productId}/options/{id}")]
         [HttpPut]
-        public void UpdateOption(Guid id, ProductOption option)
+        public async Task<IHttpActionResult> UpdateOption(Guid productId,Guid id, ProductOption option)
         {
-            var orig = new ProductOption(id)
-            {
-                Name = option.Name,
-                Description = option.Description
-            };
+            IHttpActionResult result = null;
 
-            if (!orig.IsNew)
-                orig.Save();
+            try
+            {
+                // Authorize
+                var authorized = await _authorization.Authorize("Basic", "ProductOption", "PUT");
+                if (!authorized)
+                    throw new Exception("Unauthorized user access.");
+
+                // Update product option
+                await _productFactory.UpdateProductOption(productId,id, option);
+                var response = new HttpResponseMessage(HttpStatusCode.NoContent);
+                result = ResponseMessage(response);
+            }
+            catch (Exception ex)
+            {
+                result = InternalServerError(ex);
+            }
+
+            return result;
         }
 
+        /// <summary>
+        /// DELETE /products/{id}/options/{optionId}
+        /// </summary>
+        /// <param name="productId"></param>
+        /// <param name="id"></param>
+        /// <returns></returns>
         [Route("{productId}/options/{id}")]
         [HttpDelete]
-        public void DeleteOption(Guid id)
+        public async Task<IHttpActionResult> DeleteOption(Guid productId,Guid id)
         {
-            var opt = new ProductOption(id);
-            opt.Delete();
+            IHttpActionResult result = null;
+
+            try
+            {
+                // Authorize
+                var authorized = await _authorization.Authorize("Basic", "ProductOption", "DELETE");
+                if (!authorized)
+                    throw new Exception("Unauthorized user access.");
+
+
+                //Delete product option
+                await _productFactory.DeleteProductOption(productId,id);
+                var response = new HttpResponseMessage(HttpStatusCode.NoContent);
+                result = ResponseMessage(response);
+            }
+            catch (Exception ex)
+            {
+                result = InternalServerError(ex);
+            }
+
+            return result;
         }
     }
 }

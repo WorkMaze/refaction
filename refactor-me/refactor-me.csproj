@@ -87,20 +87,33 @@
       <DependentUpon>Database.mdf</DependentUpon>
     </Content>
     <Content Include="Global.asax" />
+    <Content Include="SQLScripts\Datebase.sql" />
     <Content Include="Web.config" />
   </ItemGroup>
   <ItemGroup>
     <Compile Include="App_Start\WebApiConfig.cs" />
+    <Compile Include="AuthorizationClasses\LocalSqlDbAuthorization.cs" />
+    <Compile Include="AuthorizationClasses\SqlAuthorization.cs" />
     <Compile Include="Controllers\ProductsController.cs" />
+    <Compile Include="Interfaces\IAuthorization.cs" />
+    <Compile Include="Interfaces\IProductFactory.cs" />
+    <Compile Include="Factories\LocalSqlDbProductFactory.cs" />
+    <Compile Include="Factories\SqlProductFactory.cs" />
     <Compile Include="Global.asax.cs">
       <DependentUpon>Global.asax</DependentUpon>
     </Compile>
-    <Compile Include="Models\Helpers.cs" />
+    <Compile Include="Models\Product.cs" />
+    <Compile Include="Models\ProductOption.cs" />
+    <Compile Include="Models\ProductOptions.cs" />
     <Compile Include="Models\Products.cs" />
+    <Compile Include="Models\SqlConfiguration.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="packages.config" />
+    <Content Include="sqlconfig.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
     <None Include="Web.Debug.config">
       <DependentUpon>Web.config</DependentUpon>
     </None>
